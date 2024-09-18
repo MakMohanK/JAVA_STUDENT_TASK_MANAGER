@@ -53,27 +53,24 @@ public class StudentDashboard extends JFrame {
         new TaskCreationDialog(this, studentName);
     }
 
-    private void fetchAndDisplayTasks() {
+    public void fetchAndDisplayTasks() {
         try {
             Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/task_management", "root", "mohan@1234");
-
+            System.out.println(studentName);
             // Retrieve student_id
             String query = "SELECT id FROM users WHERE username = ?";
             PreparedStatement stmt = conn.prepareStatement(query);
             stmt.setString(1, studentName);
             ResultSet rs = stmt.executeQuery();
-            // studentId = 3;
-            System.out.println("NAME:"+studentName);
-            System.out.println("Student ID: " + rs.getInt("id")); // Debug output
 
-            // if (rs.next()) {
-            //     studentId = rs.getInt("id");
-            //     System.out.println("Student ID: " + studentId); // Debug output
-            // } else {
-            //     JOptionPane.showMessageDialog(this, "Student ID not found.");
-            //     conn.close();
-            //     return;
-            // }
+            if (rs.next()) {
+                studentId = rs.getInt("id");
+                System.out.println("Student ID: " + studentId); // Debug output
+            } else {
+                JOptionPane.showMessageDialog(this, "Student ID not found.");
+                conn.close();
+                return;
+            }
 
             // Retrieve tasks
             String taskQuery = "SELECT t.description, u.username AS teacher, t.start_time, t.end_time " +
@@ -106,7 +103,7 @@ public class StudentDashboard extends JFrame {
         }
     }
 
-    public static void main(String[] args) {
-        new StudentDashboard("Test Student");
-    }
+    // public static void main(String[] args) {
+    //     new StudentDashboard("Test Student");
+    // }
 }

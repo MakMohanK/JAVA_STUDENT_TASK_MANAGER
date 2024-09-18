@@ -75,9 +75,9 @@ public class LoginPage extends JFrame {
 
                 if (role.equals("student")) {
                     loggedInStudentId = userId; // Save student ID
-                    new StudentDashboard(name);
+                    new StudentDashboard(username);
                 } else if (role.equals("teacher")) {
-                    new TeacherDashboard(name);
+                    new TeacherDashboard(username);
                 }
 
                 dispose();
