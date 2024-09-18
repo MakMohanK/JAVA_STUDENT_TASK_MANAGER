@@ -1,5 +1,5 @@
 # JAVA_STUDENT_TASK_MANAGER
-
+Student Task Management Application
 
 ## File Structure
 
@@ -31,32 +31,44 @@ StudentTaskManager/
 
 ~~~~
 
-Student Task Management Application
-Overview
+
+## Overview
 The Student Task Management Application is a Java-based desktop application designed to help students and teachers manage tasks effectively. Students can create tasks, view their tasks, and manage their schedule, while teachers can assign and track tasks for students.
 
-Features
-User Authentication: Users can sign up and log in as either students or teachers.
-Task Management: Students can create tasks and view tasks assigned to them.
-Teacher Assignment: Tasks can be assigned to teachers who can then monitor and manage these tasks.
-Dashboard: A dedicated dashboard for students to view and manage their tasks.
-Prerequisites
+## Features
+User Authentication: 
+Users can sign up and log in as either students or teachers.
+
+Task Management: 
+Students can create tasks and view tasks assigned to them.
+
+Teacher Assignment: 
+Tasks can be assigned to teachers who can then monitor and manage these tasks.
+
+Dashboard: 
+A dedicated dashboard for students to view and manage their tasks.
+
+## Prerequisites
 Before you begin, ensure you have met the following requirements:
 
 Java Development Kit (JDK) 8 or higher
 MySQL database server
 MySQL Connector/J JDBC driver
-Installation
+
+## Installation
 1. Clone the Repository
-bash
-Copy code
-git clone https://github.com/yourusername/student-task-management.git
+~~~bash
+
+git clone https://github.com/MakMohanK/JAVA_STUDENT_TASK_MANAGER.git
+~~~
+~~~bash
 cd student-task-management
+~~~
 2. Set Up the Database
 Create a MySQL database named task_management.
 Import the provided SQL schema into your MySQL database.
-sql
-Copy code
+
+~~~bash
 CREATE TABLE users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
@@ -77,32 +89,39 @@ CREATE TABLE task (
     FOREIGN KEY (student_id) REFERENCES users(id),
     FOREIGN KEY (teacher_id) REFERENCES users(id)
 );
+~~~
 3. Configure Database Connection
 Update the database connection details in your Java code. Modify the following line in your Java files to match your database configuration:
-
-java
-Copy code
+~~~bash
 Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/task_management", "root", "your_password");
-4. Compile the Java Files
-Ensure that the MySQL Connector/J JDBC driver is available in your classpath. Compile the Java files with the following command:
+~~~
 
-bash
-Copy code
+4. Compile the Java Files
+Ensure that the MySQL Connector/J JDBC driver is available in your classpath. Compile the Java files with the following command
+
+~~~bash
 javac -cp ../lib/mysql-connector-j-9.0.0.jar gui/*.java db/*.java models/*.java
+~~~
+
+
+
+
 5. Run the Application
 Execute the main class to start the application. For example, to start the LoginPage, use:
+~~~bash
+java -cp .:../lib/mysql-connector-j-9.0.0.jar gui.LoginPage
+~~~
 
-bash
-Copy code
-java -cp ../lib/mysql-connector-j-9.0.0.jar:. gui.LoginPage
-Usage
+## Usage
 Sign Up: Create a new account by providing a username, name, email, contact number, role (student/teacher), and password.
+
 Log In: Use your credentials to log in to the application.
 Dashboard:
+
 Students: View and create tasks assigned to them. See all tasks they have created.
+
 Teachers: (Not yet implemented) Manage tasks assigned to students.
+
 Troubleshooting
 Student ID Not Found: Ensure that the student username exists in the database and is correct.
 Database Connection Issues: Verify that the database server is running and that your connection details are correct.
-Contributing
-If you wish to contribute to this project, please fork the repository and submit a pull request. Ensure that your code follows the project's coding style and includes tests.
