@@ -125,3 +125,15 @@ Teachers: (Not yet implemented) Manage tasks assigned to students.
 Troubleshooting
 Student ID Not Found: Ensure that the student username exists in the database and is correct.
 Database Connection Issues: Verify that the database server is running and that your connection details are correct.
+
+
+HOW TO RUN
+~~~bash
+cd src/
+
+
+javac -cp "../lib/mysql-connector-j-9.0.0.jar:../lib/javax.mail.jar:../lib/javax.activation-1.2.0.jar" gui/*.java db/*.java models/*.java
+
+java -cp ".:../lib/mysql-connector-j-9.0.0.jar:../lib/javax.activation-1.2.0.jar:../lib/javax.mail.jar:gui" gui.LoginPage
+
+~~~
