@@ -19,6 +19,8 @@ CREATE TABLE task (
     description TEXT,
     start_time DATETIME,
     end_time DATETIME,
+    status TEXT,
+    points INT,
     FOREIGN KEY (student_id) REFERENCES users(id),
     FOREIGN KEY (teacher_id) REFERENCES users(id)
 );
