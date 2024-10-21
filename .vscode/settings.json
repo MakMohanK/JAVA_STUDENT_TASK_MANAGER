@@ -1,0 +1,6 @@
+{
+    "java.project.sourcePaths": [
+        "lib",
+        "mysql-connector-j-9.0.0"
+    ]
+}

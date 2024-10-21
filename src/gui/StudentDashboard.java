@@ -38,7 +38,7 @@ public class StudentDashboard extends JFrame {
         add(createTaskButton);
 
         // Table setup with columns
-        tableModel = new DefaultTableModel(new String[]{"Task ID", "Description", "Teacher", "Start Time", "End Time", "Status", "Edit", "Delete"}, 0);
+        tableModel = new DefaultTableModel(new String[]{"Task ID", "Description", "Teacher", "Start Time", "End Time", "Status", "Points", "Edit", "Delete"}, 0);
         JTable taskTable = new JTable(tableModel);
         JScrollPane scrollPane = new JScrollPane(taskTable);
         scrollPane.setBounds(30, 60, 720, 225); // Adjusted for better fit
@@ -77,7 +77,7 @@ public class StudentDashboard extends JFrame {
         PreparedStatement taskStmt = null;
         ResultSet rs = null;
         ResultSet taskRs = null;
-
+    
         try {
             // Connect to the MySQL database
             conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/task_management", "root", "mohan@1234");
@@ -86,7 +86,7 @@ public class StudentDashboard extends JFrame {
             stmt = conn.prepareStatement(query);
             stmt.setString(1, studentName);
             rs = stmt.executeQuery();
-
+    
             // Get student ID
             if (rs.next()) {
                 studentId = rs.getInt("id");
@@ -94,18 +94,18 @@ public class StudentDashboard extends JFrame {
                 JOptionPane.showMessageDialog(this, "Student ID not found.");
                 return;
             }
-
+    
             // Retrieve tasks based on student ID
-            String taskQuery = "SELECT t.id, t.description, u.username AS teacher, t.start_time, t.end_time, t.status " +
+            String taskQuery = "SELECT t.id, t.description, u.username AS teacher, t.start_time, t.end_time, t.status, t.points " +
                                "FROM task t JOIN users u ON t.teacher_id = u.id " +
                                "WHERE t.student_id = ?";
             taskStmt = conn.prepareStatement(taskQuery);
             taskStmt.setInt(1, studentId);
             taskRs = taskStmt.executeQuery();
-
+    
             // Clear existing rows in table model
             tableModel.setRowCount(0);
-
+    
             // Loop through result set and add tasks to table
             while (taskRs.next()) {
                 int taskId = taskRs.getInt("id");
@@ -114,19 +114,20 @@ public class StudentDashboard extends JFrame {
                 Timestamp startTime = taskRs.getTimestamp("start_time");
                 Timestamp endTime = taskRs.getTimestamp("end_time");
                 String status = taskRs.getString("status");
-
+                int points = taskRs.getInt("points");
+    
                 // Add row to table model
-                tableModel.addRow(new Object[]{taskId, description, teacher, startTime, endTime, status, "Edit", "Delete"});
+                tableModel.addRow(new Object[]{taskId, description, teacher, startTime, endTime, status, points, "Edit", "Delete"});
             }
-
+    
             // Handle case where no tasks are found
             if (tableModel.getRowCount() == 0) {
                 JOptionPane.showMessageDialog(this, "No tasks found for this student.");
             }
-
+    
             // Notify table model that data has changed
             tableModel.fireTableDataChanged();
-
+    
         } catch (SQLException ex) {
             JOptionPane.showMessageDialog(this, "An error occurred: " + ex.getMessage());
             ex.printStackTrace();
@@ -143,6 +144,11 @@ public class StudentDashboard extends JFrame {
             }
         }
     }
+    
+
+
+
+
 
     // Method to update task status in the database
     public void updateTaskStatus(int taskId, String newStatus) {

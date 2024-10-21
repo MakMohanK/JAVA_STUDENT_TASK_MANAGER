@@ -1,21 +1,26 @@
 package gui;
 
+import javax.mail.*;
+import javax.mail.internet.*;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableCellRenderer;
-import javax.swing.table.TableCellEditor;
 import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.sql.*;
+import java.util.Properties;
 
 public class TeacherDashboard extends JFrame {
     private String teacherName;
     private int teacherId;
     private DefaultTableModel tableModel;
+    private JTable taskTable;
 
     public TeacherDashboard(String name) {
         this.teacherName = name;
         setTitle("Teacher Dashboard");
-        setSize(800, 400); // Adjusted size for better visibility
+        setSize(800, 400);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(null);
 
@@ -34,18 +39,31 @@ public class TeacherDashboard extends JFrame {
         createTaskButton.setBounds(220, 300, 120, 30);
         add(createTaskButton);
 
-        // Table setup with columns (removed "Edit" column)
-        tableModel = new DefaultTableModel(new String[]{"Task ID", "Description", "Student Name", "Start Time", "End Time", "Status", "Edit", "Delete"}, 0);
-        JTable taskTable = new JTable(tableModel);
-        JScrollPane scrollPane = new JScrollPane(taskTable);
-        scrollPane.setBounds(30, 60, 720, 225); // Adjusted for better fit
-        add(scrollPane);
+        // Table setup with columns, including Email button
+        tableModel = new DefaultTableModel(new String[]{"Task ID", "Description", "Student Name", "Start Time", "End Time", "Status", "Points", "Edit", "Delete", "Email"}, 0);
+        taskTable = new JTable(tableModel) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                // Only allow editing for Edit, Delete, and Email buttons
+                return column == 7 || column == 8 || column == 9;
+            }
 
-        // Add custom renderer and editor for the "Update Status" and "Delete" columns
-        taskTable.getColumn("Edit").setCellRenderer(new StatusButtonRenderer());
-        taskTable.getColumn("Edit").setCellEditor(new StatusButtonEditor(new JCheckBox(), this));
-        taskTable.getColumn("Delete").setCellRenderer(new DeleteButtonRenderer());
-        taskTable.getColumn("Delete").setCellEditor(new DeleteButtonEditor(new JCheckBox(), this, taskTable));
+            @Override
+            public TableCellRenderer getCellRenderer(int row, int column) {
+                if (column == 7 || column == 8 || column == 9) {
+                    return new ButtonRenderer();
+                }
+                return super.getCellRenderer(row, column);
+            }
+        };
+
+        taskTable.getColumnModel().getColumn(7).setCellEditor(new ButtonEditor(new JCheckBox(), "Edit", this));
+        taskTable.getColumnModel().getColumn(8).setCellEditor(new ButtonEditor(new JCheckBox(), "Delete", this));
+        taskTable.getColumnModel().getColumn(9).setCellEditor(new ButtonEditor(new JCheckBox(), "Email", this)); // Add Email button
+
+        JScrollPane scrollPane = new JScrollPane(taskTable);
+        scrollPane.setBounds(30, 60, 900, 300);
+        add(scrollPane);
 
         // Action listener for logout button
         logoutButton.addActionListener(e -> {
@@ -62,15 +80,12 @@ public class TeacherDashboard extends JFrame {
         setVisible(true); // Make frame visible
     }
 
-    // Method to open a dialog for task creation
     private void openTaskCreationDialog() {
-        new TaskCreationDialog(this, String.valueOf(teacherId)); // Ensure TaskCreationDialog is implemented correctly
+        new TaskCreationDialogTeacher(this, teacherName); // Pass teacherName to the dialog
     }
 
-    // Method to fetch tasks from the database and display them in the JTable
-    private void fetchAndDisplayTasks() {
+    public void fetchAndDisplayTasks() {
         try (Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/task_management", "root", "mohan@1234")) {
-            // Query to retrieve teacher_id
             String query = "SELECT id FROM users WHERE username = ?";
             try (PreparedStatement stmt = conn.prepareStatement(query)) {
                 stmt.setString(1, teacherName);
@@ -83,8 +98,7 @@ public class TeacherDashboard extends JFrame {
                 }
             }
 
-            // Retrieve tasks assigned to this teacher
-            String taskQuery = "SELECT t.id, t.description, s.username AS student, t.start_time, t.end_time, t.status " +
+            String taskQuery = "SELECT t.id, t.description, s.username AS student, t.start_time, t.end_time, t.status, t.points " +
                                "FROM task t " +
                                "JOIN users s ON t.student_id = s.id " +
                                "WHERE t.teacher_id = ?";
@@ -100,9 +114,10 @@ public class TeacherDashboard extends JFrame {
                     Timestamp startTime = taskRs.getTimestamp("start_time");
                     Timestamp endTime = taskRs.getTimestamp("end_time");
                     String status = taskRs.getString("status");
+                    int points = taskRs.getInt("points");
 
-                    // Add row to table model
-                    tableModel.addRow(new Object[]{taskId, description, student, startTime, endTime, status, "Edite", "Delete"});
+                    // Add row to table model with Edit, Delete, and Email buttons
+                    tableModel.addRow(new Object[]{taskId, description, student, startTime, endTime, status, points, "Edit", "Delete", "Email"});
                 }
 
                 if (tableModel.getRowCount() == 0) {
@@ -117,164 +132,261 @@ public class TeacherDashboard extends JFrame {
         }
     }
 
-    // Custom button renderer for "Update Status" column
-    class StatusButtonRenderer extends JButton implements TableCellRenderer {
-        public StatusButtonRenderer() {
-            setOpaque(true); // Make button opaque
-        }
+    public void editTask(int taskId) {
+        // Present the user with status options
+        String[] statusOptions = {"ToDo", "In Progress", "Done"};
+        String newStatus = (String) JOptionPane.showInputDialog(this, "Select new status:", "Update Status",
+                JOptionPane.QUESTION_MESSAGE, null, statusOptions, statusOptions[0]);
 
-        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
-            setText("Edite"); // Set button text
-            return this; // Return button
+        if (newStatus != null) {
+            // Prompt the user for points input
+            String pointsInput = JOptionPane.showInputDialog(this, "Enter points for this task:");
+            int points = 0; // Default points if input is invalid
+
+            try {
+                points = Integer.parseInt(pointsInput); // Try parsing points
+            } catch (NumberFormatException e) {
+                JOptionPane.showMessageDialog(this, "Invalid points entered. Defaulting to 0 points.");
+            }
+
+            // Now, update both the status and the points in the database
+            try (Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/task_management", "root", "mohan@1234")) {
+                String updateQuery = "UPDATE task SET status = ?, points = ? WHERE id = ?";
+                try (PreparedStatement stmt = conn.prepareStatement(updateQuery)) {
+                    stmt.setString(1, newStatus);  // Set the new status
+                    stmt.setInt(2, points);        // Set the points
+                    stmt.setInt(3, taskId);        // Specify the task to be updated
+                    stmt.executeUpdate();
+                }
+                fetchAndDisplayTasks(); // Refresh the task table after editing
+            } catch (SQLException ex) {
+                JOptionPane.showMessageDialog(this, "An error occurred: " + ex.getMessage());
+                ex.printStackTrace();
+            }
         }
     }
 
-    // Custom button editor for "Update Status" column
-    class StatusButtonEditor extends DefaultCellEditor {
-        private JButton button; // Button for updating status
-        private boolean isPushed; // Track if button is pushed
-        private int selectedRow; // Track selected row
-        private TeacherDashboard parent; // Reference to the parent dashboard
+    public void deleteTask(int taskId) {
+        int confirm = JOptionPane.showConfirmDialog(this, "Are you sure you want to delete this task?", "Confirm Delete", JOptionPane.YES_NO_OPTION);
+        if (confirm == JOptionPane.YES_OPTION) {
+            try (Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/task_management", "root", "mohan@1234")) {
+                String deleteQuery = "DELETE FROM task WHERE id = ?";
+                try (PreparedStatement stmt = conn.prepareStatement(deleteQuery)) {
+                    stmt.setInt(1, taskId);
+                    stmt.executeUpdate();
+                }
+                fetchAndDisplayTasks(); // Refresh the task table after deletion
+            } catch (SQLException ex) {
+                JOptionPane.showMessageDialog(this, "An error occurred: " + ex.getMessage());
+                ex.printStackTrace();
+            }
+        }
+    }
 
-        public StatusButtonEditor(JCheckBox checkBox, TeacherDashboard parent) {
+    public void sendEmailReminder(int taskId) {
+        // Fetch email of the student associated with the task
+        int userId = fetchUserIdFromTaskId(taskId); // Get the user's ID based on the task ID
+        String userEmail = fetchUserEmail(userId, "student"); // Assuming it's a student
+
+        if (userEmail == null) {
+            JOptionPane.showMessageDialog(this, "User email not found.");
+            return;
+        }
+
+        // Set up email properties
+        Properties props = new Properties();
+        props.put("mail.smtp.auth", "true");
+        props.put("mail.smtp.starttls.enable", "true");
+        props.put("mail.smtp.host", "smtp.gmail.com"); // Replace with your SMTP server
+        props.put("mail.smtp.port", "587"); // Change if needed
+
+        // Authenticate and send email
+        Session session = Session.getInstance(props, new Authenticator() {
+            protected PasswordAuthentication getPasswordAuthentication() {
+                return new PasswordAuthentication("studenttaskmanager1234@gmail.com", "Mohan@9922"); // Replace with your email credentials
+            }
+        });
+
+        try {
+            Message message = new MimeMessage(session);
+            message.setFrom(new InternetAddress("studenttaskmanager1234@gmail.com")); // Replace with your email
+            message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(userEmail));
+            message.setSubject("Task Reminder");
+            message.setText("Dear User,\n\nThis is a reminder that your task is overdue. Please complete it as soon as possible.");
+
+            Transport.send(message);
+            JOptionPane.showMessageDialog(this, "Email sent successfully to " + userEmail);
+        } catch (MessagingException e) {
+            JOptionPane.showMessageDialog(this, "Failed to send email: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    // Fetch email based on user ID and type (student or teacher)
+    private String fetchUserEmail(int userId, String userType) {
+        String email = null;
+        String query = "SELECT email FROM users WHERE id = ? AND role = ?"; // Assuming user_type is a column in your users table
+
+        try (Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/task_management", "root", "mohan@1234")) {
+            try (PreparedStatement stmt = conn.prepareStatement(query)) {
+                stmt.setInt(1, userId);
+                stmt.setString(2, userType); // Use "student" or "teacher"
+                ResultSet rs = stmt.executeQuery();
+                if (rs.next()) {
+                    email = rs.getString("email");
+                }
+            }
+        } catch (SQLException ex) {
+            JOptionPane.showMessageDialog(this, "An error occurred: " + ex.getMessage());
+            ex.printStackTrace();
+        }
+        return email;
+    }
+
+    // Fetch user ID based on task ID
+    private int fetchUserIdFromTaskId(int taskId) {
+        int userId = -1; // Default value if not found
+        String query = "SELECT student_id FROM task WHERE id = ?"; // Assuming the student_id is stored in the task table
+
+        try (Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/task_management", "root", "mohan@1234")) {
+            try (PreparedStatement stmt = conn.prepareStatement(query)) {
+                stmt.setInt(1, taskId);
+                ResultSet rs = stmt.executeQuery();
+                if (rs.next()) {
+                    userId = rs.getInt("student_id");
+                }
+            }
+        } catch (SQLException ex) {
+            JOptionPane.showMessageDialog(this, "An error occurred: " + ex.getMessage());
+            ex.printStackTrace();
+        }
+        return userId;
+    }
+
+    // Custom Button Renderer
+    class ButtonRenderer extends JButton implements TableCellRenderer {
+        public ButtonRenderer() {
+            setOpaque(true);
+        }
+
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+            setText((value == null) ? "" : value.toString());
+            return this;
+        }
+    }
+
+    // Custom Button Editor
+    class ButtonEditor extends DefaultCellEditor {
+        private JButton button;
+        private String label;
+        private TeacherDashboard dashboard;
+        private boolean isPushed;
+
+        public ButtonEditor(JCheckBox checkBox, String label, TeacherDashboard dashboard) {
             super(checkBox);
-            this.parent = parent; // Initialize parent reference
-            button = new JButton(); // Create button
-            button.setOpaque(true); // Make button opaque
-            button.addActionListener(e -> {
-                fireEditingStopped(); // Stop editing when button is pressed
-                updateTaskStatus(); // Call method to update task status
+            this.label = label;
+            this.dashboard = dashboard;
+            button = new JButton();
+            button.setOpaque(true);
+            button.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    fireEditingStopped();
+                    int row = taskTable.getSelectedRow();
+                    int taskId = (int) taskTable.getValueAt(row, 0);
+                    if ("Edit".equals(label)) {
+                        dashboard.editTask(taskId);
+                    } else if ("Delete".equals(label)) {
+                        dashboard.deleteTask(taskId);
+                    } else if ("Email".equals(label)) {
+                        dashboard.sendEmailReminder(taskId); // Call the email function
+                    }
+                }
             });
         }
 
         public Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
-            selectedRow = row; // Store the selected row
-            button.setText("Edit"); // Set button label
-            isPushed = true; // Mark as pushed
-            return button; // Return button component
-        }
-
-        public Object getCellEditorValue() {
-            isPushed = false; // Reset push flag
-            return button.getText(); // Return button label
-        }
-
-        public boolean stopCellEditing() {
-            isPushed = false; // Reset push flag
-            return super.stopCellEditing(); // Stop cell editing
-        }
-
-        protected void fireEditingStopped() {
-            super.fireEditingStopped(); // Fire editing stopped event
-        }
-
-        private void updateTaskStatus() {
-            int taskId = (int) tableModel.getValueAt(selectedRow, 0); // Get task ID
-            String currentStatus = (String) tableModel.getValueAt(selectedRow, 5); // Get current status
-
-            // Show dialog to select new status
-            String[] statuses = {"Pending", "In Progress", "Complete"};
-            String newStatus = (String) JOptionPane.showInputDialog(button, "Select new status:", "Edit", JOptionPane.QUESTION_MESSAGE, null, statuses, currentStatus);
-
-            if (newStatus != null) {
-                // Update the task status in the database
-                try (Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/task_management", "root", "mohan@1234")) {
-                    String query = "UPDATE task SET status = ? WHERE id = ?";
-                    try (PreparedStatement stmt = conn.prepareStatement(query)) {
-                        stmt.setString(1, newStatus);
-                        stmt.setInt(2, taskId);
-                        stmt.executeUpdate();
-                    }
-                } catch (SQLException ex) {
-                    JOptionPane.showMessageDialog(parent, "An error occurred while updating the status: " + ex.getMessage());
-                    ex.printStackTrace();
-                }
-
-                // Update the table model to reflect the new status
-                tableModel.setValueAt(newStatus, selectedRow, 5);
-            }
-        }
-    }
-
-    // Custom button renderer for "Delete" column
-    class DeleteButtonRenderer extends JButton implements TableCellRenderer {
-        public DeleteButtonRenderer() {
-            setOpaque(true); // Make button opaque
-        }
-
-        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
-            setText((value == null) ? "Delete" : value.toString()); // Set button text
-            return this; // Return button
-        }
-    }
-
-    // Custom button editor for "Delete" column
-    class DeleteButtonEditor extends DefaultCellEditor {
-        private JButton button; // Button for deleting
-        private String label; // Button label
-        private boolean isPushed; // Track if button is pushed
-        private TeacherDashboard parent; // Reference to the parent dashboard
-        private JTable table; // Reference to the table
-
-        public DeleteButtonEditor(JCheckBox checkBox, TeacherDashboard parent, JTable table) {
-            super(checkBox);
-            this.parent = parent; // Initialize parent reference
-            this.table = table; // Initialize table reference
-            button = new JButton(); // Create button
-            button.setOpaque(true); // Make button opaque
-            button.addActionListener(e -> fireEditingStopped()); // Stop editing when button is pressed
-        }
-
-        public Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
-            label = (value == null) ? "Delete" : value.toString(); // Set button label
+            label = (value == null) ? "" : value.toString();
+            isPushed = true;
             button.setText(label);
-            isPushed = true; // Mark as pushed
-            return button; // Return button component
+            return button;
         }
 
         public Object getCellEditorValue() {
             if (isPushed) {
-                // Confirm deletion
-                int confirmation = JOptionPane.showConfirmDialog(button, "Are you sure you want to delete this task?", "Delete Task", JOptionPane.YES_NO_OPTION);
-                if (confirmation == JOptionPane.YES_OPTION) {
-                    int selectedRow = table.getSelectedRow(); // Get selected row using the reference
-                    int taskId = (int) tableModel.getValueAt(selectedRow, 0); // Get task ID
-                    parent.deleteTask(taskId); // Delete task from database
-                    tableModel.removeRow(selectedRow); // Remove row from the table model
-                }
+                // Perform action based on button pushed
             }
-            isPushed = false; // Reset push flag
-            return label; // Return button label
-        }
-
-        public boolean stopCellEditing() {
-            isPushed = false; // Reset push flag
-            return super.stopCellEditing(); // Stop cell editing
-        }
-
-        protected void fireEditingStopped() {
-            super.fireEditingStopped(); // Fire editing stopped event
-        }
-    }
-
-    // Method to delete a task
-    public void deleteTask(int taskId) {
-        try (Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/task_management", "root", "mohan@1234")) {
-            String query = "DELETE FROM task WHERE id = ?";
-            try (PreparedStatement stmt = conn.prepareStatement(query)) {
-                stmt.setInt(1, taskId);
-                stmt.executeUpdate();
-            }
-        } catch (SQLException ex) {
-            JOptionPane.showMessageDialog(this, "An error occurred while deleting the task: " + ex.getMessage());
-            ex.printStackTrace();
+            isPushed = false;
+            return label;
         }
     }
 
     public static void main(String[] args) {
-        new TeacherDashboard("TeacherName"); // Pass teacher name as argument
+        new TeacherDashboard("teacher_username"); // Replace with actual teacher username
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -289,101 +401,279 @@ public class TeacherDashboard extends JFrame {
 
 // import javax.swing.*;
 // import javax.swing.table.DefaultTableModel;
+// import javax.swing.table.TableCellRenderer;
+// import java.awt.*;
+// import java.awt.event.ActionEvent;
+// import java.awt.event.ActionListener;
 // import java.sql.*;
 
 // public class TeacherDashboard extends JFrame {
 //     private String teacherName;
 //     private int teacherId;
 //     private DefaultTableModel tableModel;
+//     private JTable taskTable;
 
 //     public TeacherDashboard(String name) {
 //         this.teacherName = name;
 //         setTitle("Teacher Dashboard");
-//         setSize(600, 400);
+//         setSize(800, 400);
 //         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 //         setLayout(null);
 
+//         // Welcome label
 //         JLabel welcomeLabel = new JLabel("Hello, " + name);
 //         welcomeLabel.setBounds(100, 20, 200, 25);
 //         add(welcomeLabel);
 
+//         // Logout button
 //         JButton logoutButton = new JButton("Logout");
 //         logoutButton.setBounds(100, 300, 100, 30);
 //         add(logoutButton);
 
-//         // Table setup
-//         tableModel = new DefaultTableModel(new String[]{"Task Description", "Student Name", "Start Time", "End Time", "Status"}, 0);
-//         JTable taskTable = new JTable(tableModel);
+//         // Create Task button
+//         JButton createTaskButton = new JButton("Create Task");
+//         createTaskButton.setBounds(220, 300, 120, 30);
+//         add(createTaskButton);
+
+//         // Table setup with columns, including Status, Points, Edit, Delete
+//         tableModel = new DefaultTableModel(new String[]{"Task ID", "Description", "Student Name", "Start Time", "End Time", "Status", "Points", "Edit", "Delete"}, 0);
+//         taskTable = new JTable(tableModel) {
+//             @Override
+//             public boolean isCellEditable(int row, int column) {
+//                 // Only allow editing for Edit and Delete buttons
+//                 return column == 7 || column == 8;
+//             }
+
+//             @Override
+//             public TableCellRenderer getCellRenderer(int row, int column) {
+//                 if (column == 7 || column == 8) {
+//                     return new ButtonRenderer();
+//                 }
+//                 return super.getCellRenderer(row, column);
+//             }
+//         };
+
+//         taskTable.getColumnModel().getColumn(7).setCellEditor(new ButtonEditor(new JCheckBox(), "Edit", this));
+//         taskTable.getColumnModel().getColumn(8).setCellEditor(new ButtonEditor(new JCheckBox(), "Delete", this));
+
 //         JScrollPane scrollPane = new JScrollPane(taskTable);
-//         scrollPane.setBounds(20, 60, 550, 200);
+//         scrollPane.setBounds(30, 60, 720, 225);
 //         add(scrollPane);
 
+//         // Action listener for logout button
 //         logoutButton.addActionListener(e -> {
-//             dispose();
-//             new LoginPage();
+//             dispose(); // Close current window
+//             new LoginPage(); // Open login page
 //         });
+
+//         // Action listener for create task button
+//         createTaskButton.addActionListener(e -> openTaskCreationDialog());
 
 //         // Fetch and display tasks for the teacher
 //         fetchAndDisplayTasks();
 
-//         setVisible(true);
+//         setVisible(true); // Make frame visible
 //     }
 
-//     private void fetchAndDisplayTasks() {
-//         try {
-//             Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/task_management", "root", "mohan@1234");
+//     private void openTaskCreationDialog() {
+//         new TaskCreationDialogTeacher(this, teacherName); // Pass teacherName to the dialog
+//     }
 
-//             // Retrieve teacher_id from the database
+//     public void fetchAndDisplayTasks() {
+//         try (Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/task_management", "root", "mohan@1234")) {
 //             String query = "SELECT id FROM users WHERE username = ?";
-//             PreparedStatement stmt = conn.prepareStatement(query);
-//             stmt.setString(1, teacherName);
-//             ResultSet rs = stmt.executeQuery();
-
-//             if (rs.next()) {
-//                 teacherId = rs.getInt("id");
-//             } else {
-//                 JOptionPane.showMessageDialog(this, "Teacher ID not found.");
-//                 conn.close();
-//                 return;
+//             try (PreparedStatement stmt = conn.prepareStatement(query)) {
+//                 stmt.setString(1, teacherName);
+//                 ResultSet rs = stmt.executeQuery();
+//                 if (rs.next()) {
+//                     teacherId = rs.getInt("id");
+//                 } else {
+//                     JOptionPane.showMessageDialog(this, "Teacher ID not found.");
+//                     return;
+//                 }
 //             }
 
-//             // Retrieve tasks assigned to this teacher
-//             String taskQuery = "SELECT t.description, s.username AS student, t.start_time, t.end_time, t.status " +
-//                                 "FROM task t " +
-//                                 "JOIN users s ON t.student_id = s.id " +
-//                                 "WHERE t.teacher_id = ?";
-//             PreparedStatement taskStmt = conn.prepareStatement(taskQuery);
-//             taskStmt.setInt(1, teacherId);
-//             ResultSet taskRs = taskStmt.executeQuery();
+//             String taskQuery = "SELECT t.id, t.description, s.username AS student, t.start_time, t.end_time, t.status, t.points " +
+//                                "FROM task t " +
+//                                "JOIN users s ON t.student_id = s.id " +
+//                                "WHERE t.teacher_id = ?";
+//             try (PreparedStatement taskStmt = conn.prepareStatement(taskQuery)) {
+//                 taskStmt.setInt(1, teacherId);
+//                 ResultSet taskRs = taskStmt.executeQuery();
 
-//             tableModel.setRowCount(0); // Clear any existing rows
+//                 tableModel.setRowCount(0); // Clear any existing rows
+//                 while (taskRs.next()) {
+//                     int taskId = taskRs.getInt("id");
+//                     String description = taskRs.getString("description");
+//                     String student = taskRs.getString("student");
+//                     Timestamp startTime = taskRs.getTimestamp("start_time");
+//                     Timestamp endTime = taskRs.getTimestamp("end_time");
+//                     String status = taskRs.getString("status");
+//                     int points = taskRs.getInt("points");
 
-//             while (taskRs.next()) {
-//                 String description = taskRs.getString("description");
-//                 String student = taskRs.getString("student");
-//                 Timestamp startTime = taskRs.getTimestamp("start_time");
-//                 Timestamp endTime = taskRs.getTimestamp("end_time");
-//                 String task = taskRs.getString("status");
-                
+//                     // Add row to table model with Edit and Delete buttons
+//                     tableModel.addRow(new Object[]{taskId, description, student, startTime, endTime, status, points, "Edit", "Delete"});
+//                 }
 
+//                 if (tableModel.getRowCount() == 0) {
+//                     JOptionPane.showMessageDialog(this, "No tasks found for this teacher.");
+//                 }
 
-//                 tableModel.addRow(new Object[]{description, student, startTime, endTime, task});
+//                 tableModel.fireTableDataChanged(); // Notify table model that data has changed
 //             }
-
-//             if (tableModel.getRowCount() == 0) {
-//                 JOptionPane.showMessageDialog(this, "No tasks found for this teacher.");
-//             }
-
-//             tableModel.fireTableDataChanged(); // Notify table model that data has changed
-
-//             conn.close();
 //         } catch (SQLException ex) {
 //             JOptionPane.showMessageDialog(this, "An error occurred: " + ex.getMessage());
 //             ex.printStackTrace();
 //         }
 //     }
 
+//     // Edit task functionality
+//     // public void editTask(int taskId) {
+//     //     // Present the user with status options
+//     //     String[] statusOptions = {"ToDo", "In Progress", "Done"};
+//     //     String newStatus = (String) JOptionPane.showInputDialog(this, "Select new status:", "Update Status",
+//     //             JOptionPane.QUESTION_MESSAGE, null, statusOptions, statusOptions[0]);
+
+//     //     if (newStatus != null) {
+//     //         // Ask for points input
+//     //         String pointsInput = JOptionPane.showInputDialog(this, "Enter points for this task:");
+//     //         int newPoints = 0;
+//     //         try {
+//     //             newPoints = Integer.parseInt(pointsInput);
+//     //         } catch (NumberFormatException e) {
+//     //             JOptionPane.showMessageDialog(this, "Invalid points input. Points will be set to 0.");
+//     //         }
+
+//     //         try (Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/task_management", "root", "mohan@1234")) {
+//     //             String updateQuery = "UPDATE task SET status = ?, points = ? WHERE id = ?";
+//     //             try (PreparedStatement stmt = conn.prepareStatement(updateQuery)) {
+//     //                 stmt.setString(1, newStatus);
+//     //                 stmt.setInt(2, newPoints);
+//     //                 stmt.setInt(3, taskId);
+//     //                 stmt.executeUpdate();
+//     //             }
+//     //             fetchAndDisplayTasks(); // Refresh the task table after editing
+//     //         } catch (SQLException ex) {
+//     //             JOptionPane.showMessageDialog(this, "An error occurred: " + ex.getMessage());
+//     //             ex.printStackTrace();
+//     //         }
+//     //     }
+//     // }
+
+
+//     // Edit task functionality
+// public void editTask(int taskId) {
+//     // Present the user with status options
+//     String[] statusOptions = {"ToDo", "In Progress", "Done"};
+//     String newStatus = (String) JOptionPane.showInputDialog(this, "Select new status:", "Update Status",
+//             JOptionPane.QUESTION_MESSAGE, null, statusOptions, statusOptions[0]);
+
+//     if (newStatus != null) {
+//         // Prompt the user for points input
+//         String pointsInput = JOptionPane.showInputDialog(this, "Enter points for this task:");
+//         int points = 0; // Default points if input is invalid
+
+//         try {
+//             points = Integer.parseInt(pointsInput); // Try parsing points
+//         } catch (NumberFormatException e) {
+//             JOptionPane.showMessageDialog(this, "Invalid points entered. Defaulting to 0 points.");
+//         }
+
+//         // Now, update both the status and the points in the database
+//         try (Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/task_management", "root", "mohan@1234")) {
+//             String updateQuery = "UPDATE task SET status = ?, points = ? WHERE id = ?";
+//             try (PreparedStatement stmt = conn.prepareStatement(updateQuery)) {
+//                 stmt.setString(1, newStatus);  // Set the new status
+//                 stmt.setInt(2, points);        // Set the points
+//                 stmt.setInt(3, taskId);        // Specify the task to be updated
+//                 stmt.executeUpdate();
+//             }
+//             fetchAndDisplayTasks(); // Refresh the task table after editing
+//         } catch (SQLException ex) {
+//             JOptionPane.showMessageDialog(this, "An error occurred: " + ex.getMessage());
+//             ex.printStackTrace();
+//         }
+//     }
+// }
+
+
+//     // Delete task functionality
+//     public void deleteTask(int taskId) {
+//         int confirm = JOptionPane.showConfirmDialog(this, "Are you sure you want to delete this task?", "Confirm Delete", JOptionPane.YES_NO_OPTION);
+//         if (confirm == JOptionPane.YES_OPTION) {
+//             try (Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/task_management", "root", "mohan@1234")) {
+//                 String deleteQuery = "DELETE FROM task WHERE id = ?";
+//                 try (PreparedStatement stmt = conn.prepareStatement(deleteQuery)) {
+//                     stmt.setInt(1, taskId);
+//                     stmt.executeUpdate();
+//                 }
+//                 fetchAndDisplayTasks(); // Refresh the task table after deletion
+//             } catch (SQLException ex) {
+//                 JOptionPane.showMessageDialog(this, "An error occurred: " + ex.getMessage());
+//                 ex.printStackTrace();
+//             }
+//         }
+//     }
+
 //     public static void main(String[] args) {
-//         new TeacherDashboard("Test Teacher");
+//         TeacherDashboard dashboard = new TeacherDashboard("TeacherName"); // Pass teacher name for testing
+//     }
+// }
+
+// // Button renderer to show Edit and Delete buttons
+// class ButtonRenderer extends JButton implements TableCellRenderer {
+//     public ButtonRenderer() {
+//         setOpaque(true);
+//     }
+
+//     public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+//         setText((value == null) ? "" : value.toString());
+//         return this;
+//     }
+// }
+
+// // Button editor to handle Edit and Delete button clicks
+// class ButtonEditor extends DefaultCellEditor {
+//     private String label;
+//     private TeacherDashboard dashboard;
+//     private boolean isPushed;
+
+//     public ButtonEditor(JCheckBox checkBox, String buttonLabel, TeacherDashboard dashboard) {
+//         super(checkBox);
+//         this.dashboard = dashboard;
+//         this.label = buttonLabel;
+//     }
+
+//     public Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
+//         label = (value == null) ? "" : value.toString();
+//         isPushed = true;
+//         JButton button = new JButton(label);
+//         button.addActionListener(new ActionListener() {
+//             @Override
+//             public void actionPerformed(ActionEvent e) {
+//                 if ("Edit".equals(label)) {
+//                     int taskId = (int) table.getValueAt(row, 0);
+//                     dashboard.editTask(taskId);
+//                 } else if ("Delete".equals(label)) {
+//                     int taskId = (int) table.getValueAt(row, 0);
+//                     dashboard.deleteTask(taskId);
+//                 }
+//             }
+//         });
+//         return button;
+//     }
+
+//     public Object getCellEditorValue() {
+//         isPushed = false;
+//         return label;
+//     }
+
+//     public boolean stopCellEditing() {
+//         isPushed = false;
+//         return super.stopCellEditing();
+//     }
+
+//     protected void fireEditingStopped() {
+//         super.fireEditingStopped();
 //     }
 // }
